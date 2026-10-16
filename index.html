@@ -554,7 +554,7 @@
       <span class="sep"></span>
       <span><kbd>L</kbd> low <kbd>M</kbd> mid <kbd>H</kbd> high</span>
       <span class="sep"></span>
-      <span><kbd>Z</kbd> undo</span>
+      <span><kbd>Z</kbd> <kbd>⌫</kbd> undo</span>
       <span><kbd>R</kbd> reset</span>
     </div>
 
@@ -1413,7 +1413,7 @@
     else if (k === 'l') recordGroup('low');
     else if (k === 'm') recordGroup('mid');
     else if (k === 'h') recordGroup('high');
-    else if (k === 'z') undo();
+    else if (k === 'z' || k === 'backspace') { undo(); e.preventDefault(); } // backspace får inte gå bakåt i historiken
     else if (k === 'r') resetShoe();
   });
 
