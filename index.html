@@ -392,6 +392,40 @@
   }
 
   /* ---- Hand win rate ---- */
+
+  /* ---- Pro / license ---- */
+  .pro-box {
+    margin-top: 22px; max-width: 520px; background: var(--panel);
+    border: 1px solid rgba(212,175,55,0.35); border-radius: 12px; padding: 14px 16px;
+  }
+  .pro-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pro-title { color: var(--gold); font-weight: 800; letter-spacing: 2px; text-transform: uppercase; font-size: 0.8rem; }
+  .pro-status { font-size: 0.74rem; color: var(--muted); }
+  .pro-status.on { color: var(--gold); }
+  .pro-p { font-size: 0.74rem; color: var(--muted); line-height: 1.6; margin: 8px 0 10px; }
+  .pro-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pro-row input {
+    flex: 1 1 220px; min-width: 0; background: #0a080b; color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 0.8rem;
+    font-family: ui-monospace, Consolas, monospace;
+  }
+  .pro-row input:focus { outline: none; border-color: var(--gold-dim); }
+  .pro-btn {
+    background: linear-gradient(180deg, var(--red), var(--red-deep)); color: #fff8f0;
+    border: 1px solid rgba(212,175,55,0.5); border-radius: 8px; padding: 9px 16px;
+    font-size: 0.74rem; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+    cursor: pointer; text-decoration: none; display: inline-block;
+  }
+  .pro-btn.ghost { background: transparent; color: var(--gold); }
+  .pro-btn:disabled { opacity: 0.5; cursor: wait; }
+  .pro-msg { font-size: 0.72rem; margin-top: 8px; min-height: 1em; color: var(--muted); }
+  .pro-msg.err { color: var(--red-soft); }
+  .pro-lock {
+    border: 1px dashed rgba(212,175,55,0.4); border-radius: 10px; padding: 10px 12px;
+    font-size: 0.74rem; color: var(--muted); line-height: 1.6; margin-bottom: 10px;
+  }
+  .pro-lock b { color: var(--gold); }
+  .pro-lock .pro-btn { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -451,6 +485,29 @@
     <button class="start-btn" id="btnStart">Start Counting ▶</button>
     <button class="install-btn hidden" id="btnInstall">⬇ Install as an app</button>
     <div class="install-hint hidden" id="installHint"></div>
+
+    <div class="pro-box hidden" id="proBox">
+      <div class="pro-head">
+        <span class="pro-title">&#9819; Pro</span>
+        <span class="pro-status" id="proStatus">Free version</span>
+      </div>
+      <div id="proLocked">
+        <p class="pro-p">Pro re-solves the strategy chart from the exact cards left in the shoe after
+        every card you enter, flags where the count changes the play, and prices every cash-out offer.
+        Bought already? Paste the license key from your receipt email.</p>
+        <div class="pro-row">
+          <input id="proKey" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" autocomplete="off" spellcheck="false">
+          <button class="pro-btn" id="btnProActivate">Unlock</button>
+          <a class="pro-btn ghost" id="btnProBuy" target="_blank" rel="noopener">Get Pro</a>
+        </div>
+      </div>
+      <div id="proUnlocked" class="hidden">
+        <div class="pro-row" style="margin-top:10px">
+          <button class="pro-btn ghost" id="btnProRemove">Remove key from this device</button>
+        </div>
+      </div>
+      <div class="pro-msg" id="proMsg"></div>
+    </div>
   </div>
 
   <!-- ============ GAME ============ -->
@@ -524,6 +581,11 @@
       <div class="section-label">Live Strategy Chart — recomputed after every card
         <button class="toggle-btn" id="btnChartToggle">hide</button>
       </div>
+      <div class="pro-lock hidden" id="chartLock">
+        <b>Free version:</b> standard fresh-shoe strategy &mdash; it does not move with the count.
+        <b>Pro</b> re-solves this chart after every card and marks count deviations and cash-outs.<br>
+        <a class="pro-btn buy-link" target="_blank" rel="noopener">Get Pro</a>
+      </div>
       <div class="lc-wrap" id="liveChartWrap">
         <div class="lc-legend">
           <span><i style="background:#7e2b30"></i>Hit</span>
@@ -543,7 +605,12 @@
 
     <div class="col-right">
       <div class="section-label">Cash Out — what your hand is worth</div>
-      <div class="cash-panel">
+      <div class="pro-lock hidden" id="cashLock">
+        <b>Pro feature.</b> The table buys your hand for 99% of its true value &mdash; Pro shows what every
+        hand is worth against the live shoe, and marks the spots where their offer beats playing on.<br>
+        <a class="pro-btn buy-link" target="_blank" rel="noopener">Get Pro</a>
+      </div>
+      <div class="cash-panel" id="cashPanel">
         <p class="cash-p">They buy your hand for <b>99%</b> of its true value. The table is what each
         hand is worth <b>per unit staked</b> right now — multiply by your bet for the fair price,
         and their button will read about 1% under it.</p>
@@ -562,6 +629,88 @@
 
 <script>
   // ================= CONFIG =================
+
+  // ---- Selling ----
+  // Lemon Squeezy: create a product with "Generate license keys" on, then paste
+  // its checkout link and numeric product id here. While CHECKOUT_URL is empty
+  // the paywall is off and everything is unlocked.
+  const LICENSE = {
+    CHECKOUT_URL: '',
+    PRODUCT_ID: 0,
+    REVALIDATE_DAYS: 3,     // re-check the key with Lemon Squeezy this often
+    OFFLINE_GRACE_DAYS: 30, // keep working this long without reaching them
+  };
+  const PAYWALL = !!LICENSE.CHECKOUT_URL;
+  const LS_API = 'https://api.lemonsqueezy.com/v1/licenses/';
+  const LIC_STORE = 'bjc-license';
+  const DAY = 864e5;
+
+  function loadLicense() {
+    try { return JSON.parse(localStorage.getItem(LIC_STORE)) || null; } catch { return null; }
+  }
+  function saveLicense(lic) {
+    try { lic ? localStorage.setItem(LIC_STORE, JSON.stringify(lic)) : localStorage.removeItem(LIC_STORE); } catch {}
+  }
+  let license = loadLicense();
+  const isPro = () => !PAYWALL || !!(license && Date.now() - license.checkedAt < LICENSE.OFFLINE_GRACE_DAYS * DAY);
+
+  async function lsCall(action, fields) {
+    const res = await fetch(LS_API + action, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(fields),
+    });
+    return res.json(); // errors come back as JSON with a 4xx, so read the body either way
+  }
+  // A key from somebody else's Lemon Squeezy store must not unlock this app.
+  const rightProduct = data => !!(data && data.meta && Number(data.meta.product_id) === Number(LICENSE.PRODUCT_ID));
+
+  async function activateLicense(key) {
+    const data = await lsCall('activate', { license_key: key, instance_name: navigator.userAgent.slice(0, 80) || 'device' });
+    if (!data.activated) throw new Error(data.error || 'That key was not accepted.');
+    if (!rightProduct(data)) throw new Error('That key is for a different product.');
+    license = { key, instanceId: data.instance.id, checkedAt: Date.now() };
+    saveLicense(license);
+  }
+
+  async function revalidateLicense() {
+    if (!PAYWALL || !license || Date.now() - license.checkedAt < LICENSE.REVALIDATE_DAYS * DAY) return;
+    let data;
+    try { data = await lsCall('validate', { license_key: license.key, instance_id: license.instanceId }); }
+    catch { return; } // offline: the grace period covers it
+    if (data.valid && rightProduct(data)) {
+      license.checkedAt = Date.now();
+      saveLicense(license);
+    } else if (data.valid === false) {
+      // refunded, disabled, expired, or the device was deactivated
+      license = null;
+      saveLicense(null);
+    }
+    renderPro();
+  }
+
+  async function removeLicense() {
+    const lic = license;
+    license = null;
+    saveLicense(null);
+    renderPro();
+    // Free the activation slot so it can move to another device; best effort.
+    if (lic) lsCall('deactivate', { license_key: lic.key, instance_id: lic.instanceId }).catch(() => {});
+  }
+
+  function renderPro() {
+    const pro = isPro();
+    $('proBox').classList.toggle('hidden', !PAYWALL);
+    $('proStatus').textContent = pro ? 'Unlocked on this device' : 'Free version';
+    $('proStatus').classList.toggle('on', pro);
+    $('proLocked').classList.toggle('hidden', pro);
+    $('proUnlocked').classList.toggle('hidden', !pro);
+    const locked = PAYWALL && !pro;
+    $('chartLock').classList.toggle('hidden', !locked);
+    $('cashLock').classList.toggle('hidden', !locked);
+    $('cashPanel').classList.toggle('hidden', locked);
+    if (screen === 'game') renderLiveChart();
+  }
   const PROVIDERS = {
     evolution: { name: 'Evolution', das: false, surrender: false },
     pragmatic: { name: 'Pragmatic Play', das: true, surrender: false },
@@ -1044,7 +1193,8 @@
 
   function renderLiveChart() {
     if (!baselineChart || $('liveChartWrap').classList.contains('hidden')) return;
-    const labels = computeChartLabels(remaining);
+    const pro = isPro();
+    const labels = pro ? computeChartLabels(remaining) : baselineChart;
     let html = '<tr><th></th>' + RANKS.map(r => `<th>${rankLabel(r)}</th>`).join('') + '</tr>';
     for (const row of CHART_ROWS) {
       html += `<tr><td class="hand">${row.key}</td>`;
@@ -1052,7 +1202,7 @@
         const k = row.key + '|' + up;
         const cur = labels[k], base = baselineChart[k];
         // Yellow only for a CLEAR change of play — close-call wobble stays quiet
-        const dev = cur.primary !== base.primary && !cur.label.includes('/');
+        const dev = pro && cur.primary !== base.primary && !cur.label.includes('/');
         // Two-action cells get a diagonal split of both actions' colors
         const parts = cur.label.split('/');
         const style = parts.length === 2 && ACT_COLOR[parts[0]] && ACT_COLOR[parts[1]]
@@ -1060,7 +1210,7 @@
           : '';
         // Their price comes off a neutral shoe; ours is the shoe as it stands.
         const theirs = CASHOUT_PAYS * (1 + base.ev);
-        const co = theirs - (1 + cur.ev) > CASHOUT_MIN_EDGE;
+        const co = pro && theirs - (1 + cur.ev) > CASHOUT_MIN_EDGE;
         const bits = [`${row.key} v ${rankLabel(up)}`];
         if (dev) bits.push(`basic: ${base.label}`);
         if (co) bits.push(`cash out — they pay ~${theirs.toFixed(2)}× vs ${(1 + cur.ev).toFixed(2)}×, worth ${(100 * (theirs - 1 - cur.ev)).toFixed(1)}% of your bet`);
@@ -1070,7 +1220,7 @@
       html += '</tr>';
     }
     $('liveChart').innerHTML = html;
-    renderCashChart(labels);
+    if (pro) renderCashChart(labels);
   }
 
   // Same numbers the strategy chart runs on, shown as money rather than a letter.
@@ -1269,6 +1419,30 @@
 
   // ================= INSTALL =================
   // Offline-first so it opens instantly and keeps working on bad casino wifi.
+  document.querySelectorAll('.buy-link').forEach(a => a.href = LICENSE.CHECKOUT_URL);
+  $('btnProBuy').href = LICENSE.CHECKOUT_URL;
+  $('btnProActivate').addEventListener('click', async () => {
+    const key = $('proKey').value.trim();
+    const msg = $('proMsg'), btn = $('btnProActivate');
+    if (!key) { msg.textContent = 'Paste your license key first.'; msg.className = 'pro-msg err'; return; }
+    btn.disabled = true;
+    msg.textContent = 'Checking\u2026'; msg.className = 'pro-msg';
+    try {
+      await activateLicense(key);
+      $('proKey').value = '';
+      msg.textContent = 'Pro unlocked. Thanks for buying.';
+    } catch (err) {
+      msg.textContent = err instanceof TypeError ? 'Could not reach the license server \u2014 check your connection.' : err.message;
+      msg.className = 'pro-msg err';
+    }
+    btn.disabled = false;
+    renderPro();
+  });
+  $('proKey').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnProActivate').click(); });
+  $('btnProRemove').addEventListener('click', removeLicense);
+  renderPro();
+  revalidateLicense();
+
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch(() => {}); // fine if absent
